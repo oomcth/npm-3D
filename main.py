@@ -37,7 +37,7 @@ def main():
     args = parse_arguments()
 
     log_level = logging.DEBUG if args.debug else logging.INFO
-    logger = Logger("main.txt", "main")
+    logger = Logger("outputs", "main")
     logger.info("Démarrage de la plateforme LidarLLM")
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
