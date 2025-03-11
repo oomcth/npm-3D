@@ -217,7 +217,7 @@ def create_data_loaders(
     train_dataset: Dataset,
     val_dataset: Dataset,
     test_dataset: Optional[Dataset] = None,
-    batch_size: int = 32,
+    batch_size: int = 1,
     num_workers: int = 4,
     pin_memory: bool = True,
 ):
@@ -250,7 +250,7 @@ def create_data_loaders(
     return train_loader, val_loader, test_loader
 
 
-def create_train_test_val_datasets(root_dir, num_samples=1000, max_points=10000, seed=42):
+def create_train_test_val_datasets(root_dir, num_samples=50, max_points=10000, seed=42):
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)

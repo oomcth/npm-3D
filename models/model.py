@@ -10,19 +10,34 @@ from peft import get_peft_model, LoraConfig
 
 
 class Lidar_LLM(nn.Module):
-    def __init__(self, config):
+    def __init__(self):
         super().__init__()
-        self.config = config
         self.lidar_encoder = Lidar_Encoder()
         self.vat = VAT()
-        self.mlp = MLP()
-        self.query = torch.tensor(100)
+        self.mlp = MLP(100, 100)
+        self.mlp.decoder = nn.Linear(100, 768)
+        self.query = torch.rand((1, 100))
         self.llm = LLM()
 
-    def forward(self, lidar, prompts):
+    def forward(self, lidar, prompts, answer=None, criterion=None):
+        self = self.to(lidar.device)
+        self.query = self.query.to(lidar.device)
         bev_feature = self.lidar_encoder(lidar)
         bev_feature = self.vat(bev_feature, self.query)
+        bev_feature = self.mlp(bev_feature)
         output = self.llm(bev_feature, prompts)
+
+        if answer is not None and criterion is not None:
+            answer_tokens = self.llm.tokenizer(
+                answer, padding=True, truncation=True, return_tensors="pt"
+            ).input_ids
+
+            loss = criterion(output[:, -1, :].view(-1, output.size(-1)),
+                             answer_tokens.view(-1).to(lidar.device))
+
+            valid_tokens = (answer_tokens != self.llm.tokenizer.pad_token_id).sum()
+
+            return loss, valid_tokens
         return output
 
     def generate(self, lidar, prompts):
@@ -37,7 +52,7 @@ class MiniPointNet(nn.Module):
         super(MiniPointNet, self).__init__()
         self.emb_size = emb_size
 
-        self.mlp1 = nn.Linear(3, 64)
+        self.mlp1 = nn.Linear(4, 64)
         self.mlp2 = nn.Linear(64, 128)
         self.mlp3 = nn.Linear(128, emb_size)
 
@@ -70,8 +85,7 @@ class LLM(nn.Module):
             r=8,
             lora_alpha=32,
             lora_dropout=0.1,
-            target_modules=["q_proj", "v_proj"],
-            lora_r_dropout=0.1,
+            target_modules=["c_attn"],
             bias="none"
         )
         self.model = get_peft_model(self.model, self.lora_config)
@@ -88,10 +102,10 @@ class LLM(nn.Module):
         inputs = self.tokenizer(prompts, return_tensors='pt',
                                 padding=True, truncation=True)
 
-        input_embeds = self.model.transformer.wte(inputs['input_ids'])
-        input_embeds_with_prompt = torch.cat((x, input_embeds), dim=1)
+        input_embeds = self.model.transformer.wte(inputs['input_ids'].to(x.device))
+        input_embeds_with_prompt = torch.cat((x.unsqueeze(1), input_embeds), dim=1)
         outputs = self.model(inputs_embeds=input_embeds_with_prompt)
-        return outputs
+        return outputs.logits
 
     def generate(self,
                  x: torch.Tensor,
@@ -189,11 +203,11 @@ class LLM(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.encoder = nn.Linear(100, 100)
+    def __init__(self, inputdim, latentdim):
+        super().__init__()
+        self.encoder = nn.Linear(inputdim, latentdim)
         self.activation = nn.ReLU()
-        self.decoder = nn.Linear(100, 100)
+        self.decoder = nn.Linear(latentdim, inputdim)
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, x):
@@ -224,16 +238,12 @@ class CrossAttention(nn.Module):
         keys = self.key(bev_emb)
         values = self.value(bev_emb)
 
-        value_len, key_len, query_len = values.shape[1], keys.shape[1], query.shape[1]
-
-        values = values.reshape(N, value_len, self.num_heads, self.head_dim)
-        keys = keys.reshape(N, key_len, self.num_heads, self.head_dim)
-        query = query.reshape(N, query_len, self.num_heads, self.head_dim)
-
+        values = values.reshape(N, self.num_heads, self.head_dim).unsqueeze(1)
+        keys = keys.reshape(N, self.num_heads, self.head_dim).unsqueeze(1)
+        query = query.reshape(N, self.num_heads, self.head_dim).unsqueeze(1)
         values = values.permute(2, 0, 1, 3)
         keys = keys.permute(2, 0, 1, 3)
         query = query.permute(2, 0, 1, 3)
-
         energy = torch.einsum("qhnd,qhmd->hnqm", [query, keys])
 
         if mask is not None:
@@ -241,10 +251,8 @@ class CrossAttention(nn.Module):
 
         attention = torch.softmax(energy, dim=-1)
 
-        out = torch.einsum("hnqm,hmvd->hnqd", [attention, values])
-
-        out = out.reshape(N, query_len, self.num_heads * self.head_dim)
-
+        out = torch.einsum("abcd,abce->abde", [attention, values])
+        out = out.reshape(N, 1, self.num_heads * self.head_dim).squeeze(1)
         out = self.fc_out(out)
         return out
 
@@ -309,13 +317,13 @@ class VAT(nn.Module):
         super().__init__(*args, **kwargs)
         self.crossAttention = CrossAttention(100, 5)
         self.selfAttention = CrossAttention(100, 5)
-        self.batchnorm1 = BatchNormWithPatching(100)
-        self.batchnorm2 = BatchNormWithPatching(100)
+        # self.batchnorm1 = nn.LayerNorm(100)
+        # self.batchnorm2 = nn.LayerNorm(100)
         self.mlp = MLP(100, 100)
 
     def forward(self, bev_emb, queries):
         bev_emb = self.selfAttention(bev_emb, bev_emb)
-        bev_emb = self.batchnorm1(bev_emb)
+        # bev_emb = self.batchnorm1(bev_emb)
         bev_emb = self.crossAttention(bev_emb, queries)
-        bev_emb = self.batchnorm2(bev_emb)
+        # bev_emb = self.batchnorm2(bev_emb)
         return self.mlp(bev_emb)

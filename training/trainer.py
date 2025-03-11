@@ -8,6 +8,8 @@ from typing import Dict, List, Any, Optional, Union, Callable
 from models.base_model import BaseModel
 from training.callbacks import BaseCallback, ModelCheckpoint, EarlyStopping
 from utils.logger import Logger
+import random
+from tqdm import tqdm
 
 
 class Trainer:
@@ -37,34 +39,46 @@ class Trainer:
         self.best_score = float('inf')
         self.metrics = {}
 
+        self.history = {
+            "train_loss": [],
+            "train_token_accuracy": [],
+            "train_perplexity": [],
+            "val_loss": [],
+            "val_token_accuracy": [],
+            "val_perplexity": [],
+            "learning_rate": [],
+            "epoch_time": []
+        }
+
     def train_epoch(self, train_loader: DataLoader):
         self.model.train()
         running_loss = 0.0
         total_tokens = 0
         correct_tokens = 0
 
-        for batch_idx, (inputs, targets) in enumerate(train_loader):
-            inputs = inputs.to(self.device)
-            targets = targets.to(self.device)
+        for batch_idx, batch in tqdm(enumerate(train_loader), leave=False, desc="trainning"):
+            inputs = batch["points"].to(self.device)
 
-            batch_size, seq_length = targets.size()
+            new_prompts = []
+            new_answers = []
+
+            for prompt, target in zip(batch["prompt"], batch["answer"]):
+                random_index = random.randint(0, len(target) - 1)
+                new_prompt = f"{prompt} : {target[:random_index]}"
+                new_answer = target[random_index]
+                new_prompts.append(new_prompt)
+                new_answers.append(new_answer)
 
             self.optimizer.zero_grad()
-            outputs = self.model(inputs)
 
-            outputs_flat = outputs.view(-1, outputs.size(-1))
-            targets_flat = targets.view(-1)
-
-            loss = self.criterion(outputs_flat, targets_flat)
+            loss, valid_tokens = self.model(inputs, new_prompts, new_answers, self.criterion)
             loss.backward()
             self.optimizer.step()
 
             running_loss += loss.item()
 
-            _, predicted = outputs_flat.max(1)
-            valid_tokens = targets_flat != -100
-            total_tokens += valid_tokens.sum().item()
-            correct_tokens += (predicted == targets_flat)[valid_tokens].sum().item()
+            correct_tokens += valid_tokens
+            total_tokens += inputs.size(0) if len(inputs.size()) == 3 else 1
 
             if batch_idx % 20 == 0 and self.logger:
                 self.logger.log({
@@ -91,32 +105,32 @@ class Trainer:
         total_tokens = 0
         correct_tokens = 0
 
-        with torch.no_grad():
-            for inputs, targets in val_loader:
-                inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
+        for batch_idx, batch in tqdm(enumerate(val_loader), leave=False, desc="validation"):
+            inputs = batch["points"].to(self.device)
 
-                batch_size, seq_length = targets.size()
+            new_prompts = []
+            new_answers = []
 
-                outputs = self.model(inputs)
+            for prompt, target in zip(batch["prompt"], batch["answer"]):
+                random_index = random.randint(0, len(target) - 1)
+                new_prompt = f"{prompt} : {target[:random_index]}"
+                new_answer = target[random_index]
+                new_prompts.append(new_prompt)
+                new_answers.append(new_answer)
 
-                outputs_flat = outputs.view(-1, outputs.size(-1))
-                targets_flat = targets.view(-1)
+            loss, valid_tokens = self.model(inputs, new_prompts, new_answers, self.criterion)
 
-                loss = self.criterion(outputs_flat, targets_flat)
-                running_loss += loss.item()
+            running_loss += loss.item()
 
-                _, predicted = outputs_flat.max(1)
-                valid_tokens = targets_flat != -100
-                total_tokens += valid_tokens.sum().item()
-                correct_tokens += (predicted == targets_flat)[valid_tokens].sum().item()
+            correct_tokens += valid_tokens
+            total_tokens += inputs.size(0) if len(inputs.size()) == 3 else 1
 
-        val_loss = running_loss / len(val_loader)
+        train_loss = running_loss / len(val_loader)
         token_accuracy = 100.0 * correct_tokens / total_tokens if total_tokens > 0 else 0.0
-        perplexity = torch.exp(torch.tensor(val_loss)).item()
+        perplexity = torch.exp(torch.tensor(train_loss)).item()
 
         metrics = {
-            "val_loss": val_loss,
+            "val_loss": train_loss,
             "val_token_accuracy": token_accuracy,
             "val_perplexity": perplexity,
         }
@@ -132,7 +146,7 @@ class Trainer:
         for callback in self.callbacks:
             callback.on_train_begin(self)
 
-        for epoch in range(epochs):
+        for epoch in tqdm(range(epochs)):
             self.epoch = epoch
 
             for callback in self.callbacks:
@@ -148,6 +162,15 @@ class Trainer:
 
             epoch_time = time.time() - start_time
             self.metrics["epoch_time"] = epoch_time
+
+            self.history["train_loss"].append(train_metrics["train_loss"])
+            self.history["train_token_accuracy"].append(train_metrics["train_token_accuracy"])
+            self.history["train_perplexity"].append(train_metrics["train_perplexity"])
+            self.history["val_loss"].append(val_metrics["val_loss"])
+            self.history["val_token_accuracy"].append(val_metrics["val_token_accuracy"])
+            self.history["val_perplexity"].append(val_metrics["val_perplexity"])
+            self.history["learning_rate"].append(train_metrics["learning_rate"])
+            self.history["epoch_time"].append(epoch_time)
 
             if self.logger:
                 self.logger.log(self.metrics, epoch=epoch)

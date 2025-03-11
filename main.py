@@ -44,8 +44,7 @@ def main():
 
     logger.info("Chargement et préparation des données")
     data_loaders = create_data_loaders(*create_train_test_val_datasets("data/data"))
-
-    logger.info(f"Initialisation du modèle de type {args.model_type}")
+    logger.info("Initialisation du modèle")
     model = Lidar_LLM()
 
     if args.checkpoint:
@@ -62,7 +61,7 @@ def main():
                           if torch.mps.is_available() else "cpu",
                           None)
 
-        model = trainer.train(data_loaders[0])
+        model = trainer.fit(data_loaders[0], data_loaders[2], 2)
 
         logger.info("Évaluation du modèle après entraînement")
         pass
