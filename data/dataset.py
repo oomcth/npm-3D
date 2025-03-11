@@ -84,8 +84,6 @@ class ImageDataset(BaseDataset):
         return image
 
     def _load_image(self, path):
-        # Implement image loading based on your needs (PIL, OpenCV, etc.)
-        # For example, using PIL:
         from PIL import Image
         return Image.open(path).convert("RGB")
 
@@ -146,12 +144,10 @@ class LidarPointCloudDataset(BaseDataset):
         return result
 
     def _load_bin_file(self, file_path):
-        """Charge un fichier binaire contenant un nuage de points."""
-        points = np.fromfile(file_path, dtype=np.float32).reshape(-1, 4)  # [x, y, z, intensity]
+        points = np.fromfile(file_path, dtype=np.float32).reshape(-1, 4)
         return points
 
     def _load_ply_file(self, file_path):
-        """Charge un fichier PLY contenant un nuage de points."""
         try:
             from plyfile import PlyData
             plydata = PlyData.read(file_path)
@@ -172,7 +168,6 @@ class LidarPointCloudDataset(BaseDataset):
             raise
 
     def _load_pcd_file(self, file_path):
-        """Charge un fichier PCD contenant un nuage de points."""
         try:
             import open3d as o3d
             pcd = o3d.io.read_point_cloud(file_path)
@@ -188,7 +183,6 @@ class LidarPointCloudDataset(BaseDataset):
             raise
 
     def _load_txt_file(self, file_path):
-        """Charge un fichier texte (xyz ou pts) contenant un nuage de points."""
         points = np.loadtxt(file_path, delimiter=' ')
         return points
 

@@ -40,26 +40,31 @@ class Trainer:
     def train_epoch(self, train_loader: DataLoader):
         self.model.train()
         running_loss = 0.0
-        correct = 0
-        total = 0
+        total_tokens = 0
+        correct_tokens = 0
 
         for batch_idx, (inputs, targets) in enumerate(train_loader):
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
 
+            batch_size, seq_length = targets.size()
+
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
-            loss = self.criterion(outputs, targets)
+
+            outputs_flat = outputs.view(-1, outputs.size(-1))
+            targets_flat = targets.view(-1)
+
+            loss = self.criterion(outputs_flat, targets_flat)
             loss.backward()
             self.optimizer.step()
 
             running_loss += loss.item()
 
-            # For classification
-            if outputs.size()[-1] > 1:  # Multi-class
-                _, predicted = outputs.max(1)
-                total += targets.size(0)
-                correct += predicted.eq(targets).sum().item()
+            _, predicted = outputs_flat.max(1)
+            valid_tokens = targets_flat != -100
+            total_tokens += valid_tokens.sum().item()
+            correct_tokens += (predicted == targets_flat)[valid_tokens].sum().item()
 
             if batch_idx % 20 == 0 and self.logger:
                 self.logger.log({
@@ -68,11 +73,13 @@ class Trainer:
                 })
 
         train_loss = running_loss / len(train_loader)
-        train_acc = 100.0 * correct / total if total > 0 else 0.0
+        token_accuracy = 100.0 * correct_tokens / total_tokens if total_tokens > 0 else 0.0
+        perplexity = torch.exp(torch.tensor(train_loss)).item()
 
         metrics = {
             "train_loss": train_loss,
-            "train_acc": train_acc,
+            "train_token_accuracy": token_accuracy,
+            "train_perplexity": perplexity,
             "learning_rate": self.optimizer.param_groups[0]['lr'],
         }
 
@@ -81,31 +88,37 @@ class Trainer:
     def validate(self, val_loader: DataLoader):
         self.model.eval()
         running_loss = 0.0
-        correct = 0
-        total = 0
+        total_tokens = 0
+        correct_tokens = 0
 
         with torch.no_grad():
             for inputs, targets in val_loader:
                 inputs = inputs.to(self.device)
                 targets = targets.to(self.device)
 
-                outputs = self.model(inputs)
-                loss = self.criterion(outputs, targets)
+                batch_size, seq_length = targets.size()
 
+                outputs = self.model(inputs)
+
+                outputs_flat = outputs.view(-1, outputs.size(-1))
+                targets_flat = targets.view(-1)
+
+                loss = self.criterion(outputs_flat, targets_flat)
                 running_loss += loss.item()
 
-                # For classification
-                if outputs.size()[-1] > 1:  # Multi-class
-                    _, predicted = outputs.max(1)
-                    total += targets.size(0)
-                    correct += predicted.eq(targets).sum().item()
+                _, predicted = outputs_flat.max(1)
+                valid_tokens = targets_flat != -100
+                total_tokens += valid_tokens.sum().item()
+                correct_tokens += (predicted == targets_flat)[valid_tokens].sum().item()
 
         val_loss = running_loss / len(val_loader)
-        val_acc = 100.0 * correct / total if total > 0 else 0.0
+        token_accuracy = 100.0 * correct_tokens / total_tokens if total_tokens > 0 else 0.0
+        perplexity = torch.exp(torch.tensor(val_loss)).item()
 
         metrics = {
             "val_loss": val_loss,
-            "val_acc": val_acc,
+            "val_token_accuracy": token_accuracy,
+            "val_perplexity": perplexity,
         }
 
         return metrics
@@ -127,39 +140,33 @@ class Trainer:
 
             start_time = time.time()
 
-            # Training phase
             train_metrics = self.train_epoch(train_loader)
 
-            # Validation phase
             val_metrics = self.validate(val_loader)
 
-            # Update metrics
             self.metrics = {**train_metrics, **val_metrics}
 
             epoch_time = time.time() - start_time
             self.metrics["epoch_time"] = epoch_time
 
-            # Log metrics
             if self.logger:
                 self.logger.log(self.metrics, epoch=epoch)
 
-            # Print progress
             print(f"Epoch: {epoch+1}/{epochs} | "
                   f"Train Loss: {train_metrics['train_loss']:.4f} | "
                   f"Val Loss: {val_metrics['val_loss']:.4f} | "
-                  f"Train Acc: {train_metrics['train_acc']:.2f}% | "
-                  f"Val Acc: {val_metrics['val_acc']:.2f}% | "
+                  f"Train Token Acc: {train_metrics['train_token_accuracy']:.2f}% | "
+                  f"Val Token Acc: {val_metrics['val_token_accuracy']:.2f}% | "
+                  f"Train PPL: {train_metrics['train_perplexity']:.2f} | "
+                  f"Val PPL: {val_metrics['val_perplexity']:.2f} | "
                   f"Time: {epoch_time:.2f}s")
 
-            # Step the learning rate scheduler if it exists
             if self.scheduler:
                 self.scheduler.step()
 
-            # Execute callbacks
             for callback in self.callbacks:
                 callback.on_epoch_end(self)
 
-            # Check if training should stop (e.g., early stopping)
             stop_training = False
             for callback in self.callbacks:
                 if hasattr(callback, 'stop_training') and callback.stop_training:

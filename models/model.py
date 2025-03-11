@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from typing import List, Optional
+from typing import List, Optional, Union
 import torch.nn.functional as F
 from models.base_model import BaseModel
 from torch_geometric.nn import PointNet2
@@ -25,6 +25,12 @@ class Lidar_LLM(nn.Module):
         bev_feature = self.vat(bev_feature, self.query)
         output = self.llm(bev_feature, prompts)
         return output
+
+    def generate(self, lidar, prompts):
+        bev_feature = self.lidar_encoder(lidar)
+        bev_feature = self.vat(bev_feature, self.query)
+        gen = self.llm.generate(bev_feature, prompts)
+        return gen
 
 
 class Lidar_Encoder(nn.Module):
@@ -52,6 +58,14 @@ class LLM(nn.Module):
         )
         self.model = get_peft_model(self.model, self.lora_config)
 
+        self.max_length = 100
+        self.temperature = 0.7
+        self.top_p = 0.9
+        self.top_k = 50
+
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
     def forward(self, x, prompts):
         inputs = self.tokenizer(prompts, return_tensors='pt',
                                 padding=True, truncation=True)
@@ -60,6 +74,100 @@ class LLM(nn.Module):
         input_embeds_with_prompt = torch.cat((x, input_embeds), dim=1)
         outputs = self.model(inputs_embeds=input_embeds_with_prompt)
         return outputs
+
+    def generate(self,
+                 x: torch.Tensor,
+                 prompts: Union[str, List[str]],
+                 max_length: Optional[int] = None,
+                 temperature: Optional[float] = None,
+                 top_p: Optional[float] = None,
+                 top_k: Optional[int] = None,
+                 num_return_sequences: int = 1,
+                 do_sample: bool = True,
+                 batch_size: Optional[int] = None) -> List[str]:
+        max_length = max_length or self.max_length
+        temperature = temperature or self.temperature
+        top_p = top_p or self.top_p
+        top_k = top_k or self.top_k
+
+        device = next(self.parameters()).device
+        x = x.to(device)
+
+        if isinstance(prompts, str):
+            prompts = [prompts] * x.shape[0]
+
+        if len(prompts) != x.shape[0]:
+            raise ValueError(f"Le nombre de prompts ({len(prompts)}) doit correspondre "
+                             f"à la taille du batch des nuages de points ({x.shape[0]})")
+
+        if batch_size is not None and batch_size < x.shape[0]:
+            all_generated_texts = []
+
+            for i in range(0, x.shape[0], batch_size):
+                batch_x = x[i:i+batch_size]
+                batch_prompts = prompts[i:i+batch_size]
+
+                batch_texts = self._generate_batch(
+                    batch_x, batch_prompts, max_length, temperature,
+                    top_p, top_k, num_return_sequences, do_sample
+                )
+                all_generated_texts.extend(batch_texts)
+
+            return all_generated_texts
+        else:
+            return self._generate_batch(
+                x, prompts, max_length, temperature,
+                top_p, top_k, num_return_sequences, do_sample
+            )
+
+    def _generate_batch(self,
+                        x: torch.Tensor,
+                        prompts: List[str],
+                        max_length: int,
+                        temperature: float,
+                        top_p: float,
+                        top_k: int,
+                        num_return_sequences: int,
+                        do_sample: bool) -> List[str]:
+
+        device = next(self.parameters()).device
+
+        tokenized = self.tokenizer(prompts, return_tensors='pt', padding=True, truncation=True)
+        input_ids = tokenized['input_ids'].to(device)
+        attention_mask = tokenized['attention_mask'].to(device)
+
+        text_embeds = self.model.transformer.wte(input_ids)
+
+        combined_embeds = torch.cat((x, text_embeds), dim=1)
+
+        point_cloud_mask = torch.ones((x.shape[0], x.shape[1]), device=device)
+        combined_attention_mask = torch.cat((point_cloud_mask, attention_mask), dim=1)
+
+        self.eval()
+        with torch.no_grad():
+            gen_kwargs = {
+                "max_length": max_length,
+                "temperature": temperature,
+                "top_p": top_p,
+                "top_k": top_k,
+                "num_return_sequences": num_return_sequences,
+                "do_sample": do_sample,
+                "pad_token_id": self.tokenizer.pad_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "attention_mask": combined_attention_mask
+            }
+
+            generated_sequences = self.model.generate(
+                inputs_embeds=combined_embeds,
+                **gen_kwargs
+            )
+
+            generated_texts = []
+            for seq in generated_sequences:
+                decoded_text = self.tokenizer.decode(seq, skip_special_tokens=True)
+                generated_texts.append(decoded_text)
+
+            return generated_texts
 
 
 class MLP(nn.Module):

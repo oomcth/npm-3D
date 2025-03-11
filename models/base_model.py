@@ -19,3 +19,6 @@ class BaseModel(nn.Module, ABC):
 
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+    def generate(self, data):
+        return data

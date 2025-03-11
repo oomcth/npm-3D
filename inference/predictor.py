@@ -7,7 +7,7 @@ class Predictor:
     def __init__(
         self,
         model,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = "cuda" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else "cpu",
         preprocessing=None,
         postprocessing=None,
     ):
@@ -20,33 +20,27 @@ class Predictor:
         self.model.eval()
 
     def predict(self, inputs, batch_size=None):
-        # Preprocess inputs if needed
         if self.preprocessing:
             inputs = self.preprocessing(inputs)
 
-        # Convert to tensor if needed
         if not isinstance(inputs, torch.Tensor):
             inputs = torch.tensor(inputs, device=self.device)
 
-        # Move to device
         inputs = inputs.to(self.device)
 
-        # Predict in batches or all at once
         with torch.no_grad():
             if batch_size:
                 outputs = []
                 for i in range(0, len(inputs), batch_size):
                     batch = inputs[i:i+batch_size]
-                    batch_output = self.model(batch)
+                    batch_output = self.model.generate(batch)
                     outputs.append(batch_output)
                 outputs = torch.cat(outputs, dim=0)
             else:
                 outputs = self.model(inputs)
 
-        # Move to CPU for further processing
         outputs = outputs.cpu()
 
-        # Postprocess if needed
         if self.postprocessing:
             outputs = self.postprocessing(outputs)
 

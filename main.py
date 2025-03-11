@@ -2,8 +2,7 @@ import argparse
 import os
 import logging
 from pathlib import Path
-
-from config.config import ConfigManager
+from config.config import Config
 from data.dataset import DatasetLoader
 from data.preprocessing import DataPreprocessor
 from data.augmentation import DataAugmenter
@@ -17,15 +16,11 @@ from utils.visualization import Visualizer
 
 def parse_arguments():
     """Parse les arguments de ligne de commande."""
-    parser = argparse.ArgumentParser(description="Plateforme d'entraînement de modèles d'IA")
+    parser = argparse.ArgumentParser(description="Plateforme d'entraînement de Lidar LLM")
 
-    parser.add_argument("--config", type=str, default="config/default.yaml",
-                        help="Chemin vers le fichier de configuration")
-    parser.add_argument("--mode", type=str, choices=["train", "evaluate", "predict"], 
+    parser.add_argument("--mode", type=str, choices=["train", "evaluate", "predict"],
                         default="train", help="Mode d'exécution")
-    parser.add_argument("--model_type", type=str, choices=["cnn", "transformer"],
-                        default="transformer", help="Type de modèle à utiliser")
-    parser.add_argument("--data_path", type=str, default="data/raw",
+    parser.add_argument("--data_path", type=str, default="random",
                         help="Chemin vers les données brutes")
     parser.add_argument("--output_dir", type=str, default="outputs",
                         help="Répertoire pour sauvegarder les résultats")
@@ -38,15 +33,14 @@ def parse_arguments():
 
 
 def main():
-    """Fonction principale coordonnant les différentes étapes du pipeline."""
     args = parse_arguments()
 
     log_level = logging.DEBUG if args.debug else logging.INFO
     setup_logging(log_level, os.path.join(args.output_dir, "logs"))
     logger = logging.getLogger(__name__)
-    logger.info("Démarrage de la plateforme d'IA")
+    logger.info("Démarrage de la plateforme LidarLLM")
 
-    config_manager = ConfigManager(args.config)
+    config_manager = Config()
     config = config_manager.get_config()
     logger.info(f"Configuration chargée depuis {args.config}")
 
