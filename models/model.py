@@ -16,7 +16,9 @@ class Lidar_LLM(nn.Module):
         self.vat = VAT()
         self.mlp = MLP(100, 100)
         self.mlp.decoder = nn.Linear(100, 768)
-        self.query = torch.rand((1, 100))
+        self.query = torch.rand((1, 100)).to("cuda" if torch.cuda.is_available()
+                                             else "mps" if torch.mps.is_available()
+                                             else "cpu")
         self.llm = LLM()
 
     def forward(self, lidar, prompts, answer=None, criterion=None):
@@ -41,8 +43,9 @@ class Lidar_LLM(nn.Module):
         return output
 
     def generate(self, lidar, prompts):
-        bev_feature = self.lidar_encoder(lidar)
+        bev_feature = self.lidar_encoder(lidar.to(self.query.device))
         bev_feature = self.vat(bev_feature, self.query)
+        bev_feature = self.mlp(bev_feature)
         gen = self.llm.generate(bev_feature, prompts)
         return gen
 
@@ -168,12 +171,12 @@ class LLM(nn.Module):
         input_ids = tokenized['input_ids'].to(device)
         attention_mask = tokenized['attention_mask'].to(device)
 
-        text_embeds = self.model.transformer.wte(input_ids)
-
-        combined_embeds = torch.cat((x, text_embeds), dim=1)
-
-        point_cloud_mask = torch.ones((x.shape[0], x.shape[1]), device=device)
-        combined_attention_mask = torch.cat((point_cloud_mask, attention_mask), dim=1)
+        combined_embeds = self.model.get_input_embeddings()(input_ids)
+        x = x.unsqueeze(1)
+        combined_embeds = torch.cat([x, combined_embeds], dim=1)
+        batch_size = input_ids.size(0)
+        additional_mask = torch.ones(batch_size, 1).to(x.device)
+        combined_attention_mask = torch.cat([additional_mask, attention_mask], dim=1)
 
         self.eval()
         with torch.no_grad():
@@ -198,8 +201,7 @@ class LLM(nn.Module):
             for seq in generated_sequences:
                 decoded_text = self.tokenizer.decode(seq, skip_special_tokens=True)
                 generated_texts.append(decoded_text)
-
-            return generated_texts
+            return [s1 + " : " + s2 for s1, s2 in zip(prompts, generated_texts)]
 
 
 class MLP(nn.Module):

@@ -20,7 +20,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Plateforme d'entraînement de Lidar LLM")
 
     parser.add_argument("--mode", type=str, choices=["train", "evaluate", "predict"],
-                        default="train", help="Mode d'exécution")
+                        default="predict", help="Mode d'exécution")
     parser.add_argument("--data_path", type=str, default="random",
                         help="Chemin vers les données brutes")
     parser.add_argument("--output_dir", type=str, default="outputs",
@@ -78,9 +78,7 @@ def main():
                               "cuda" if torch.cuda.is_available() else "mps"
                               if torch.mps.is_available() else "cpu"
                               )
-        predictions = predictor.predict(data_loaders[1])
-
-        predictor.save_predictions(predictions, os.path.join(args.output_dir, "predictions"))
+        predictions = predictor.predict(next(iter(data_loaders[1])))
 
         print(predictions)
 
