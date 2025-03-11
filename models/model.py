@@ -7,11 +7,10 @@ from models.base_model import BaseModel
 from torch_geometric.nn.models import LightGCN
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from peft import get_peft_model, LoraConfig
-from config.config import Config
 
 
 class Lidar_LLM(nn.Module):
-    def __init__(self, config: Config):
+    def __init__(self, config):
         super().__init__()
         self.config = config
         self.lidar_encoder = Lidar_Encoder()
