@@ -4,6 +4,7 @@ from typing import Dict, List, Union, Tuple, Callable
 from abc import ABC, abstractmethod
 import random
 
+
 class BaseAugmentation(ABC):
     @abstractmethod
     def __call__(self, data):
@@ -275,3 +276,12 @@ class Compose:
         for t in self.transforms:
             data = t(data)
         return data
+
+
+def create_aug():
+    elastic = ElasticDistortion()
+    dropout = RandomDropout()
+    jitter = RandomJitter()
+    translation = RandomTranslation()
+    scale = RandomScale()
+    return Compose([elastic, dropout, jitter, translation, scale])

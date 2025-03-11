@@ -4,7 +4,7 @@ import math
 from typing import List, Optional, Union
 import torch.nn.functional as F
 from models.base_model import BaseModel
-from torch_geometric.nn import PointNet2
+from torch_geometric.nn.models import LightGCN
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from peft import get_peft_model, LoraConfig
 from config.config import Config
@@ -33,13 +33,32 @@ class Lidar_LLM(nn.Module):
         return gen
 
 
+class MiniPointNet(nn.Module):
+    def __init__(self, emb_size=100):
+        super(MiniPointNet, self).__init__()
+        self.emb_size = emb_size
+
+        self.mlp1 = nn.Linear(3, 64)
+        self.mlp2 = nn.Linear(64, 128)
+        self.mlp3 = nn.Linear(128, emb_size)
+
+    def forward(self, x):
+        x = F.relu(self.mlp1(x))
+        x = F.relu(self.mlp2(x))
+        x = self.mlp3(x)
+
+        x = torch.max(x, dim=1)[0]
+
+        return x
+
+
 class Lidar_Encoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.pointnet2 = PointNet2(segmentation=False)
+        self.pointnet = MiniPointNet()
 
     def forward(self, x):
-        x = self.pointnet2(x)
+        x = self.pointnet(x)
         return x
 
 

@@ -1,16 +1,16 @@
 import argparse
 import os
+from utils import logger as log
 import logging
 from pathlib import Path
 from config.config import Config
-from data.dataset import DatasetLoader
-from data.preprocessing import DataPreprocessor
-from data.augmentation import DataAugmenter
+from data.dataset import create_data_loaders, create_train_test_val_datasets
+from data.preprocessing import PreprocessingPipeline
+from data.augmentation import create_aug
 from models.model import Lidar_LLM
-from training.trainer import ModelTrainer
-from evaluation.metrics import ModelEvaluator
-from inference.predictor import ModelPredictor
-from utils.logger import setup_logging
+from training.trainer import Trainer
+from inference.predictor import Predictor
+from utils.logger import Logger
 from utils.visualization import Visualizer
 
 
@@ -36,8 +36,7 @@ def main():
     args = parse_arguments()
 
     log_level = logging.DEBUG if args.debug else logging.INFO
-    setup_logging(log_level, os.path.join(args.output_dir, "logs"))
-    logger = logging.getLogger(__name__)
+    logger = log("main.txt", "main")
     logger.info("Démarrage de la plateforme LidarLLM")
 
     config_manager = Config()
