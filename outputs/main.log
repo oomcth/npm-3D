@@ -204,3 +204,14 @@
 2025-03-17 17:25:47,246 - main - INFO - Initialisation du modèle
 2025-03-17 17:25:48,529 - main - INFO - Chargement et préparation des données
 2025-03-17 17:25:48,776 - main - INFO - Démarrage de l'entraînement du modèle
+2025-03-17 17:34:04,077 - main - INFO - Logger initialized for experiment: main
+2025-03-17 17:34:04,077 - main - INFO - Démarrage de la plateforme LidarLLM
+2025-03-17 17:34:04,077 - main - INFO - Initialisation du modèle
+2025-03-17 17:34:05,450 - main - INFO - Chargement et préparation des données
+2025-03-17 17:34:05,654 - main - INFO - Génération de prédictions
+2025-03-17 17:35:55,095 - main - INFO - Logger initialized for experiment: main
+2025-03-17 17:35:55,096 - main - INFO - Démarrage de la plateforme LidarLLM
+2025-03-17 17:35:55,096 - main - INFO - Initialisation du modèle
+2025-03-17 17:35:56,269 - main - INFO - Chargement et préparation des données
+2025-03-17 17:35:56,450 - main - INFO - Génération de prédictions
+2025-03-17 17:36:20,062 - main - INFO - Exécution terminée. Résultats sauvegardés dans outputs

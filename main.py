@@ -22,7 +22,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Plateforme d'entraînement de Lidar LLM")
 
     parser.add_argument("--mode", type=str, choices=["train", "distillation", "predict"],
-                        default="train", help="Mode d'exécution")
+                        default="predict", help="Mode d'exécution")
     parser.add_argument("--data_path", type=str, default="random",
                         help="Chemin vers les données brutes")
     parser.add_argument("--output_dir", type=str, default="outputs",

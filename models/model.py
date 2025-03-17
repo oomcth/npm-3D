@@ -51,6 +51,7 @@ class Lidar_LLM(nn.Module):
 
     def generate(self, lidar: torch.tensor, prompts: list[str], use_encoder=False):
         lidar = lidar.to(self.query.device)
+        self.query = self.query[0, :].repeat(lidar.size()[0], 1).to(lidar.device)
         if use_encoder:
             bev_feature = self.lidar_encoder(lidar.to(self.query.device))
         else:
