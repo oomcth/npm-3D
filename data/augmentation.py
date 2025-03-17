@@ -1,60 +1,30 @@
-
-# data/augmentation.py
 import numpy as np
 import torch
 from typing import Dict, List, Union, Tuple, Callable
 from abc import ABC, abstractmethod
-
-
-class BaseAugmentation(ABC):
-    @abstractmethod
-    def __call__(self, data):
-        pass
-
-
-import numpy as np
-import torch
-from abc import ABC, abstractmethod
 import random
-import math
+
 
 class BaseAugmentation(ABC):
     @abstractmethod
     def __call__(self, data):
         pass
+
 
 class PointCloudAugmentation(BaseAugmentation):
-    """Classe combinant plusieurs augmentations pour les nuages de points"""
     def __init__(self, augmentations):
-        """
-        Args:
-            augmentations: liste d'objets d'augmentation
-        """
         self.augmentations = augmentations
-        
+
     def __call__(self, data):
-        """
-        Applique séquentiellement toutes les augmentations
-        
-        Args:
-            data: dictionnaire contenant les points et métadonnées
-            
-        Returns:
-            dict: données augmentées
-        """
         for aug in self.augmentations:
             data = aug(data)
         return data
 
+
 class RandomRotation(BaseAugmentation):
-    """Rotation aléatoire du nuage de points autour de l'axe Z (vertical)"""
     def __init__(self, angle_range=(-np.pi, np.pi)):
-        """
-        Args:
-            angle_range: tuple de (min_angle, max_angle) en radians
-        """
         self.angle_range = angle_range
-        
+
     def __call__(self, data):
         points = data['points']
 
@@ -306,3 +276,12 @@ class Compose:
         for t in self.transforms:
             data = t(data)
         return data
+
+
+def create_aug():
+    elastic = ElasticDistortion()
+    dropout = RandomDropout()
+    jitter = RandomJitter()
+    translation = RandomTranslation()
+    scale = RandomScale()
+    return Compose([elastic, dropout, jitter, translation, scale])

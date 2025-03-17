@@ -1,0 +1,8 @@
+data/data/
+outputs/distilled_lidar_gpt2.pt
+main.txt/main.log
+distilled_lidar_gpt2.pt
+main.txt/main.log
+__pycache__/
+*.py[cod]
+*$py.class

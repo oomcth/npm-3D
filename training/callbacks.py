@@ -104,7 +104,7 @@ class EarlyStopping(BaseCallback):
         self.stop_training = False
 
     def on_train_end(self, trainer):
-        pass
+        trainer.model.save("checkpoints/" + str(trainer.epoch) + ".pth")
 
     def on_epoch_begin(self, trainer):
         pass

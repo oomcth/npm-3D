@@ -20,10 +20,6 @@ except ImportError:
 
 
 class Logger:
-    """
-    Unified logging interface that supports local file logging,
-    console output, TensorBoard, and Weights & Biases.
-    """
     def __init__(
         self,
         log_dir: str,
