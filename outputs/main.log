@@ -199,3 +199,8 @@
 2025-03-17 16:50:14,332 - main - INFO - Initialisation du modèle
 2025-03-17 16:50:15,541 - main - INFO - Chargement et préparation des données
 2025-03-17 16:50:15,716 - main - INFO - Démarrage de l'entraînement du modèle
+2025-03-17 17:25:47,246 - main - INFO - Logger initialized for experiment: main
+2025-03-17 17:25:47,246 - main - INFO - Démarrage de la plateforme LidarLLM
+2025-03-17 17:25:47,246 - main - INFO - Initialisation du modèle
+2025-03-17 17:25:48,529 - main - INFO - Chargement et préparation des données
+2025-03-17 17:25:48,776 - main - INFO - Démarrage de l'entraînement du modèle
