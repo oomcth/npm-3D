@@ -328,7 +328,7 @@ def create_data_loaders(
 # Dataset Splitting: Create Train, Test, Val Datasets
 #############################################
 def create_train_test_val_datasets(
-        model,  # For embedding raw point clouds if desired.
+        model, 
         root_dir: str,
         num_samples: int = 50,
         max_points: int = 10000,
@@ -399,10 +399,8 @@ def create_train_test_val_datasets(
     )
     return train_dataset, test_dataset, val_dataset
 
-#############################################
-# Test Function for Dataset and DataLoaders
-#############################################
-def test_dataset_and_loaders():
+
+""" def test_dataset_and_loaders():
     root_dir = "my_nuscenes_mini_dataset"
     train_dir = os.path.join(root_dir, "train")
     val_dir = os.path.join(root_dir, "val")
@@ -463,3 +461,4 @@ if __name__ == "__main__":
     print("Testing dataset and data loaders...")
     train_loader, val_loader = test_dataset_and_loaders()
     print("\nSuccessfully loaded datasets and created data loaders!")
+ """
