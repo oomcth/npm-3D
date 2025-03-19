@@ -9,11 +9,13 @@ from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from peft import get_peft_model, LoraConfig
 
 
+
+
 class Lidar_LLM(nn.Module):
     def __init__(self):
         super().__init__()
         self.lidar_encoder = Lidar_Encoder()
-        self.vat = VAT()
+        self.vat = VAT(embed_dim=100, num_heads=5, num_views=6)
         self.mlp = MLP(100, 100)
         self.mlp.decoder = nn.Linear(100, 768)
         self.query = torch.rand((1, 100)).to(
@@ -25,14 +27,14 @@ class Lidar_LLM(nn.Module):
 
     def forward(self, lidar: torch.tensor, prompts: list[str],
                 answer: list[str] = None, criterion=None,
-                use_encoder=False):
+                use_encoder=False,  view_idx: Optional[int] = None):
         self = self.to(lidar.device)
         self.query = self.query[0, :].repeat(lidar.size()[0], 1).to(lidar.device)
         if use_encoder:
             bev_feature = self.lidar_encoder(lidar)
         else:
             bev_feature = lidar
-        bev_feature = self.vat(bev_feature, self.query)
+        bev_feature = self.vat(bev_feature, self.query, view_idx=view_idx)        
         bev_feature = self.mlp(bev_feature)
         output = self.llm(bev_feature, prompts)
 
@@ -49,14 +51,15 @@ class Lidar_LLM(nn.Module):
             return loss, valid_tokens
         return output
 
-    def generate(self, lidar: torch.tensor, prompts: list[str], use_encoder=False):
+    def generate(self, lidar: torch.tensor, prompts: list[str], 
+                 use_encoder=False, view_idx: Optional[int] = None):
         lidar = lidar.to(self.query.device)
         self.query = self.query[0, :].repeat(lidar.size()[0], 1).to(lidar.device)
         if use_encoder:
             bev_feature = self.lidar_encoder(lidar.to(self.query.device))
         else:
             bev_feature = lidar
-        bev_feature = self.vat(bev_feature, self.query)
+        bev_feature = self.vat(bev_feature, self.query, view_idx=view_idx)
         bev_feature = self.mlp(bev_feature)
         gen = self.llm.generate(bev_feature, prompts)
         return gen
@@ -333,17 +336,21 @@ class BatchNormWithPatching(nn.Module):
 
 
 class VAT(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.crossAttention = CrossAttention(100, 5)
-        self.norm1 = LayerNorm(100)
-        self.norm2 = LayerNorm(100)
-        self.selfAttention = CrossAttention(100, 5)
-        self.mlp = MLP(100, 100)
-
-    def forward(self, bev_emb: torch.tensor, queries: torch.tensor):
+    def __init__(self, embed_dim=100, num_heads=5, num_views=6):
+        super().__init__()
+        self.crossAttention = CrossAttention(embed_dim, num_heads)
+        self.selfAttention = CrossAttention(embed_dim, num_heads)
+        self.mlp = MLP(embed_dim, embed_dim)
+        self.num_views = num_views
+        self.view_embeddings = nn.Parameter(torch.zeros(num_views, embed_dim))
+    
+    def forward(self, bev_emb, queries, view_idx: Optional[int] = None):
         bev_emb = self.selfAttention(bev_emb, bev_emb)
-        bev_emb = self.norm1(bev_emb)
+        if view_idx is not None:
+            view_embed = self.view_embeddings[view_idx] 
+        else:
+            view_embed = self.view_embeddings.mean(dim=0)
+        view_embed = view_embed.unsqueeze(0).expand(bev_emb.size(0), -1)
+        bev_emb = bev_emb + view_embed
         bev_emb = self.crossAttention(bev_emb, queries)
-        bev_emb = self.norm2(bev_emb)
         return self.mlp(bev_emb)
