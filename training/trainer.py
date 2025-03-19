@@ -67,9 +67,14 @@ class Trainer:
             new_prompts = []
             new_answers = []
             for prompt, target in zip(batch["prompt"], batch["answer"]):
-                random_index = random.randint(0, len(target) - 1) if len(target) > 0 else 0
-                new_prompts.append(f"{prompt} : {target[:random_index]}")
-                new_answers.append(target[random_index] if len(target) > 0 else "")
+                # If target is empty, set to "none"
+                if len(target) > 0:
+                    random_index = random.randint(0, len(target) - 1)
+                    new_prompts.append(f"{prompt} : {target[:random_index]}")
+                    new_answers.append(target[random_index])
+                else:
+                    new_prompts.append(f"{prompt} : ")
+                    new_answers.append("none")
             
             batch_loss = 0.0
             batch_valid_tokens = 0
@@ -78,7 +83,7 @@ class Trainer:
                 sample = batch["points"][i].to(self.device)
                 prompt_i = new_prompts[i]
                 answer_i = new_answers[i]
-
+                
                 sample = sample.unsqueeze(0)
                 loss, valid_tokens = self.model(sample, [prompt_i], [answer_i], self.criterion)
                 batch_loss += loss
@@ -111,6 +116,7 @@ class Trainer:
         }
         return metrics
 
+
     def validate(self, val_loader: DataLoader):
         self.model.eval()
         running_loss = 0.0
@@ -122,9 +128,13 @@ class Trainer:
                 new_prompts = []
                 new_answers = []
                 for prompt, target in zip(batch["prompt"], batch["answer"]):
-                    random_index = random.randint(0, len(target) - 1) if len(target) > 0 else 0
-                    new_prompts.append(f"{prompt} : {target[:random_index]}")
-                    new_answers.append(target[random_index] if len(target) > 0 else "")
+                    if len(target) > 0:
+                        random_index = random.randint(0, len(target) - 1)
+                        new_prompts.append(f"{prompt} : {target[:random_index]}")
+                        new_answers.append(target[random_index])
+                    else:
+                        new_prompts.append(f"{prompt} : ")
+                        new_answers.append("none")
                 
                 batch_loss = 0.0
                 batch_valid_tokens = 0
@@ -152,6 +162,7 @@ class Trainer:
             "val_perplexity": perplexity,
         }
         return metrics
+
     
     def evaluate_captioning(self, eval_loader: DataLoader) -> Dict[str, float]:
         self.model.eval()
@@ -172,44 +183,44 @@ class Trainer:
 
 
     
-     ### Not working yet
-     """ def evaluate_grounding(self, eval_loader: DataLoader) -> Dict[str, float]:
-        self.model.eval()
-        all_pred_logits = []
-        all_gt_labels = []
-        all_pred_boxes = []
-        all_gt_boxes = []
-        with torch.no_grad():
-            for batch in tqdm(eval_loader, desc="Evaluating Grounding"):
-                for i, sample in enumerate(batch["points"]):
-                    sample = sample.to(self.device).unsqueeze(0)
-                    prompt_i = batch["prompt"][i]
-                    outputs = self.model(sample, [prompt_i])
-                    all_pred_logits.append(outputs["logits"])
-                    all_gt_labels.append(batch["class_label"][i].to(self.device))
-                    all_pred_boxes.extend(outputs["boxes"])
-                    all_gt_boxes.extend(batch["bev_box"][i])
-        pred_logits = torch.cat(all_pred_logits, dim=0)
-        gt_labels = torch.cat(all_gt_labels, dim=0)
-        classification_acc = compute_classification_accuracy(pred_logits, gt_labels)
-        bev_miou = compute_bev_miou(all_pred_boxes, all_gt_boxes)
-        return {"classification_accuracy": classification_acc, "bev_miou": bev_miou}
+    ### Not working yet
+    """ def evaluate_grounding(self, eval_loader: DataLoader) -> Dict[str, float]:
+    self.model.eval()
+    all_pred_logits = []
+    all_gt_labels = []
+    all_pred_boxes = []
+    all_gt_boxes = []
+    with torch.no_grad():
+        for batch in tqdm(eval_loader, desc="Evaluating Grounding"):
+            for i, sample in enumerate(batch["points"]):
+                sample = sample.to(self.device).unsqueeze(0)
+                prompt_i = batch["prompt"][i]
+                outputs = self.model(sample, [prompt_i])
+                all_pred_logits.append(outputs["logits"])
+                all_gt_labels.append(batch["class_label"][i].to(self.device))
+                all_pred_boxes.extend(outputs["boxes"])
+                all_gt_boxes.extend(batch["bev_box"][i])
+    pred_logits = torch.cat(all_pred_logits, dim=0)
+    gt_labels = torch.cat(all_gt_labels, dim=0)
+    classification_acc = compute_classification_accuracy(pred_logits, gt_labels)
+    bev_miou = compute_bev_miou(all_pred_boxes, all_gt_boxes)
+    return {"classification_accuracy": classification_acc, "bev_miou": bev_miou}
 
 
     def evaluate_highlevel(self, eval_loader: DataLoader) -> Dict[str, float]:
-        self.model.eval()
-        all_predictions = []
-        all_gt_answers = []
-        with torch.no_grad():
-            for batch in tqdm(eval_loader, desc="Evaluating High-Level Instructions"):
-                for i, sample in enumerate(batch["points"]):
-                    sample = sample.to(self.device).unsqueeze(0)
-                    prompt_i = batch["prompt"][i]
-                    generated = self.model.generate(sample, [prompt_i])
-                    all_predictions.append(generated[0])
-                all_gt_answers.extend(batch["answer"])
-        top1_acc = compute_top1_accuracy(all_predictions, all_gt_answers)
-        return {"top1_accuracy": top1_acc} """
+    self.model.eval()
+    all_predictions = []
+    all_gt_answers = []
+    with torch.no_grad():
+        for batch in tqdm(eval_loader, desc="Evaluating High-Level Instructions"):
+            for i, sample in enumerate(batch["points"]):
+                sample = sample.to(self.device).unsqueeze(0)
+                prompt_i = batch["prompt"][i]
+                generated = self.model.generate(sample, [prompt_i])
+                all_predictions.append(generated[0])
+            all_gt_answers.extend(batch["answer"])
+    top1_acc = compute_top1_accuracy(all_predictions, all_gt_answers)
+    return {"top1_accuracy": top1_acc} """
 
 
 

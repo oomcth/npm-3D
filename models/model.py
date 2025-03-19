@@ -187,11 +187,10 @@ class LLM(nn.Module):
                         top_k: int,
                         num_return_sequences: int,
                         do_sample: bool) -> List[str]:
-
         device = next(self.parameters()).device
 
         tokenized = self.tokenizer(prompts, return_tensors='pt', padding=True, truncation=True)
-        input_ids = tokenized['input_ids'].to(device)
+        input_ids = tokenized['input_ids'].to(device).long()
         attention_mask = tokenized['attention_mask'].to(device)
 
         combined_embeds = self.model.get_input_embeddings()(input_ids)
@@ -225,6 +224,7 @@ class LLM(nn.Module):
                 decoded_text = self.tokenizer.decode(seq, skip_special_tokens=True)
                 generated_texts.append(decoded_text)
             return [s1 + " : " + s2 for s1, s2 in zip(prompts, generated_texts)]
+
 
 
 class MLP(nn.Module):

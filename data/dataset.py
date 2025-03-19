@@ -205,6 +205,7 @@ class LidarPointCloudDataset(Dataset):
     def embed(self, model):
         """
         Optionally pre-compute embeddings for each point cloud using the provided model.
+        This function checks if the tensor is transposed (i.e. shape[0] == 4) and transposes it if needed.
         """
         if model is None:
             print("No model provided for embedding, skipping embedding step.")
@@ -214,10 +215,14 @@ class LidarPointCloudDataset(Dataset):
             for idx in tqdm(range(len(self)), desc="Preprocessing Data", leave=False):
                 data = self[idx]
                 point_cloud_tensor = data['points']
+                # Check if the tensor is transposed (e.g., 4 x N instead of N x 4)
+                if point_cloud_tensor.dim() == 2 and point_cloud_tensor.shape[0] == 4 and point_cloud_tensor.shape[1] != 4:
+                    point_cloud_tensor = point_cloud_tensor.T
                 embedded_points = model(point_cloud_tensor)
                 data['points'] = embedded_points
                 if self.cache_data:
                     self.data_cache[idx] = data
+
 
 #############################################
 # NuscenesFeatureDataset for Pre-extracted Features
@@ -336,129 +341,99 @@ def create_train_test_val_datasets(
         use_preextracted: bool = False,
         feature_dir: Optional[str] = None,
         annotation_file: Optional[str] = None
-        ):
+    ):
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
     os.makedirs(root_dir, exist_ok=True)
 
-    if use_preextracted:
-        if feature_dir is None or annotation_file is None:
-            raise ValueError("For pre-extracted features, both feature_dir and annotation_file must be provided.")
-        full_dataset = NuscenesFeatureDataset(feature_dir, annotation_file)
-    else:
-        example_prompts = [
-            "Identifier les obstacles sur la route",
-            "Détecter les piétons dans la scène",
-            "Analyser la structure de la route",
-            "Segmenter les véhicules environnants",
-            "Mesurer la distance aux objets proches",
-            "Analyser la densité du trafic",
-            "Repérer les panneaux de signalisation",
-            "Détecter les feux de circulation",
-            "Identifier les bâtiments",
-            "Tracer le contour de la chaussée"
-        ]
-        possible_answers = [
-            "Utilisation de capteurs LIDAR et de caméras pour détecter les objets statiques et dynamiques sur la voie.",
-            "Application de modèles de vision par ordinateur pour identifier et suivre les piétons en mouvement.",
-            "Analyse des marquages au sol et des bordures pour comprendre la géométrie de la route.",
-            "Utilisation de réseaux de neurones convolutifs pour distinguer et segmenter les véhicules proches.",
-            "Utilisation de capteurs ultrasoniques ou LIDAR pour estimer la distance aux objets environnants.",
-            "Calcul du nombre de véhicules par unité de temps pour évaluer la congestion routière.",
-            "Détection et reconnaissance des panneaux à l'aide de techniques de traitement d'image et d'apprentissage profond.",
-            "Identification des feux de signalisation et de leur état (vert, orange, rouge) en temps réel.",
-            "Utilisation de données cartographiques et de capteurs pour localiser et identifier les structures bâties.",
-            "Utilisation de techniques de segmentation d'image pour délimiter les bords de la route."
-        ]
-        prompts = [random.choice(example_prompts) for _ in range(num_samples)]
-        answers = [random.choice(possible_answers) for _ in range(num_samples)]
-        # Create dummy point cloud files for simulation.
-        for i in range(num_samples):
-            num_points = random.randint(max_points // 2, max_points)
-            points = np.random.rand(num_points, 4)
-            file_path = os.path.join(root_dir, f"point_cloud_{i:05d}.bin")
-            points.astype(np.float32).tofile(file_path)
-        full_dataset = LidarPointCloudDataset(
-            root_dir=root_dir,
-            prompts=prompts,
-            answers=answers,
+    # Check if the directory has train/val split folders
+    train_folder = os.path.join(root_dir, "train")
+    val_folder = os.path.join(root_dir, "val")
+    if os.path.isdir(train_folder) and os.path.isdir(val_folder):
+        print(f"Using provided split from {root_dir}:")
+        print(f"  Training folder: {train_folder}")
+        print(f"  Validation folder: {val_folder}")
+        train_dataset = LidarPointCloudDataset(
+            root_dir=train_folder,
             max_points=max_points,
             cache_data=True
         )
+        val_dataset = LidarPointCloudDataset(
+            root_dir=val_folder,
+            max_points=max_points,
+            cache_data=True
+        )
+        test_dataset = None
+        train_dataset.embed(model)
+        val_dataset.embed(model)
+        return train_dataset, test_dataset, val_dataset
+
+    else:
+        # Check if there are any point cloud files in the root_dir
+        existing_files = []
+        for ext in ['.bin', '.ply', '.pcd', '.xyz', '.pts', '.npz']:
+            existing_files.extend(glob.glob(os.path.join(root_dir, f'*{ext}')))
+        existing_files.sort()
+        if len(existing_files) > 0:
+            print(f"Using existing dataset from {root_dir} with {len(existing_files)} files.")
+            full_dataset = LidarPointCloudDataset(
+                root_dir=root_dir,
+                max_points=max_points,
+                cache_data=True
+            )
+        else:
+            print(f"No point cloud files found in {root_dir}. Generating a random dataset with {num_samples} samples.")
+            example_prompts = [
+                "Identifier les obstacles sur la route",
+                "Détecter les piétons dans la scène",
+                "Analyser la structure de la route",
+                "Segmenter les véhicules environnants",
+                "Mesurer la distance aux objets proches",
+                "Analyser la densité du trafic",
+                "Repérer les panneaux de signalisation",
+                "Détecter les feux de circulation",
+                "Identifier les bâtiments",
+                "Tracer le contour de la chaussée"
+            ]
+            possible_answers = [
+                "Utilisation de capteurs LIDAR et de caméras pour détecter les objets statiques et dynamiques sur la voie.",
+                "Application de modèles de vision par ordinateur pour identifier et suivre les piétons en mouvement.",
+                "Analyse des marquages au sol et des bordures pour comprendre la géométrie de la route.",
+                "Utilisation de réseaux de neurones convolutifs pour distinguer et segmenter les véhicules proches.",
+                "Utilisation de capteurs ultrasoniques ou LIDAR pour estimer la distance aux objets environnants.",
+                "Calcul du nombre de véhicules par unité de temps pour évaluer la congestion routière.",
+                "Détection et reconnaissance des panneaux à l'aide de techniques de traitement d'image et d'apprentissage profond.",
+                "Identification des feux de signalisation et de leur état (vert, orange, rouge) en temps réel.",
+                "Utilisation de données cartographiques et de capteurs pour localiser et identifier les structures bâties.",
+                "Utilisation de techniques de segmentation d'image pour délimiter les bords de la route."
+            ]
+            prompts = [random.choice(example_prompts) for _ in range(num_samples)]
+            answers = [random.choice(possible_answers) for _ in range(num_samples)]
+            for i in range(num_samples):
+                num_points = random.randint(max_points // 2, max_points)
+                points = np.random.rand(num_points, 4)
+                file_path = os.path.join(root_dir, f"point_cloud_{i:05d}.bin")
+                # Ensure the directory for file_path exists
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                points.astype(np.float32).tofile(file_path)
+            full_dataset = LidarPointCloudDataset(
+                root_dir=root_dir,
+                prompts=prompts,
+                answers=answers,
+                max_points=max_points,
+                cache_data=True
+            )
         full_dataset.embed(model)
 
-    train_size = int(0.8 * len(full_dataset))
-    test_size = int(0.1 * len(full_dataset))
-    val_size = len(full_dataset) - train_size - test_size
+        dataset_length = len(full_dataset)
+        train_size = int(0.8 * dataset_length)
+        test_size = int(0.1 * dataset_length)
+        val_size = dataset_length - train_size - test_size
 
-    train_dataset, test_dataset, val_dataset = random_split(
-        full_dataset,
-        [train_size, test_size, val_size],
-        generator=torch.Generator().manual_seed(seed)
-    )
-    return train_dataset, test_dataset, val_dataset
-
-
-""" def test_dataset_and_loaders():
-    root_dir = "my_nuscenes_mini_dataset"
-    train_dir = os.path.join(root_dir, "train")
-    val_dir = os.path.join(root_dir, "val")
-
-    # Check for .npz files in train directory and inspect one sample
-    sample_files = glob.glob(os.path.join(train_dir, "*.npz"))
-    if sample_files:
-        print(f"Examining sample .npz file: {sample_files[0]}")
-        try:
-            data = np.load(sample_files[0])
-            print(f"Available keys in .npz file: {data.files}")
-            for key in data.files:
-                print(f"Key: {key}, Shape: {data[key].shape}, Type: {data[key].dtype}")
-        except Exception as e:
-            print(f"Error inspecting .npz file: {str(e)}")
-
-    # Create raw LiDAR datasets
-    train_dataset = LidarPointCloudDataset(
-        root_dir=train_dir,
-        max_points=10000,
-        cache_data=True
-    )
-    val_dataset = LidarPointCloudDataset(
-        root_dir=val_dir,
-        max_points=10000,
-        cache_data=True
-    )
-
-    # Create data loaders (using num_workers=0 for easier debugging)
-    train_loader, val_loader, _ = create_data_loaders(
-        train_dataset=train_dataset,
-        val_dataset=val_dataset,
-        batch_size=2,
-        num_workers=0
-    )
-
-    # Test loading a batch from train loader
-    print("\nTesting train loader...")
-    train_batch = next(iter(train_loader))
-    print(f"Train batch keys: {list(train_batch.keys())}")
-    if isinstance(train_batch['points'], list):
-        print(f"Train batch points shapes: {[p.shape for p in train_batch['points']]}")
-    else:
-        print(f"Train batch points shape: {train_batch['points'].shape}")
-
-    # Test loading a batch from validation loader
-    print("\nTesting validation loader...")
-    val_batch = next(iter(val_loader))
-    print(f"Validation batch keys: {list(val_batch.keys())}")
-    if isinstance(val_batch['points'], list):
-        print(f"Validation batch points shapes: {[p.shape for p in val_batch['points']]}")
-    else:
-        print(f"Validation batch points shape: {val_batch['points'].shape}")
-
-    return train_loader, val_loader
-
-if __name__ == "__main__":
-    print("Testing dataset and data loaders...")
-    train_loader, val_loader = test_dataset_and_loaders()
-    print("\nSuccessfully loaded datasets and created data loaders!")
- """
+        train_dataset, test_dataset, val_dataset = random_split(
+            full_dataset,
+            [train_size, test_size, val_size],
+            generator=torch.Generator().manual_seed(seed)
+        )
+        return train_dataset, test_dataset, val_dataset
