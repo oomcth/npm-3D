@@ -344,13 +344,39 @@ class VAT(nn.Module):
         self.num_views = num_views
         self.view_embeddings = nn.Parameter(torch.zeros(num_views, embed_dim))
     
+    
+    
     def forward(self, bev_emb, queries, view_idx: Optional[int] = None):
+        
+        """
+        We have two choices here:
+        A specific view mode:
+        When view_idx is provided (if the sample is associated with for example the "front left" view),
+        only the corresponding view embedding is added to the BEV feature before running cross-attention.
+        
+        A panoramic view mode:
+        When no view index is provided (i.e a panoramic sample), 
+        the code loops over all six view embeddings, injecting each one into a copy of the BEV feature, 
+        processes each with cross-attention (with the same query embeddings), and finally averages the six resulting outputs. 
+        This more closely matches the paper's 
+        description of “injecting all six view position embeddings” rather than simply averaging the embeddings beforehand.
+        
+        
+        """
         bev_emb = self.selfAttention(bev_emb, bev_emb)
+        
         if view_idx is not None:
-            view_embed = self.view_embeddings[view_idx] 
+            view_embed = self.view_embeddings[view_idx]  
+            view_embed = view_embed.unsqueeze(0).expand(bev_emb.size(0), -1)
+            bev_emb = bev_emb + view_embed
+            bev_emb = self.crossAttention(bev_emb, queries)
         else:
-            view_embed = self.view_embeddings.mean(dim=0)
-        view_embed = view_embed.unsqueeze(0).expand(bev_emb.size(0), -1)
-        bev_emb = bev_emb + view_embed
-        bev_emb = self.crossAttention(bev_emb, queries)
+            outputs = []
+            for i in range(self.num_views):
+                view_embed = self.view_embeddings[i].unsqueeze(0).expand(bev_emb.size(0), -1)
+                bev_emb_i = bev_emb + view_embed
+                out_i = self.crossAttention(bev_emb_i, queries)
+                outputs.append(out_i)
+            bev_emb = torch.stack(outputs, dim=0).mean(dim=0)
+        
         return self.mlp(bev_emb)
