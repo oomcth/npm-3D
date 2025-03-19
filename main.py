@@ -72,7 +72,17 @@ def main():
             config=None
         )
         model = trainer.fit(train_loader, val_loader, epochs=2)
-
+        
+        
+        caption_metrics = trainer.evaluate_captioning(val_loader)
+        logger.info(f"Captioning Metrics: {caption_metrics}")
+        
+        #grounding_metrics = trainer.evaluate_grounding(val_loader)
+        #logger.info(f"Grounding Metrics: {grounding_metrics}")
+        
+        #highlevel_metrics = trainer.evaluate_highlevel(val_loader)
+        #logger.info(f"High-level Instruction Metrics: {highlevel_metrics}")
+        
         logger.info("Génération des visualisations d'entraînement")
         visualizer.plot_training_history(trainer.history)
 

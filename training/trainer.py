@@ -10,6 +10,13 @@ from training.callbacks import BaseCallback, ModelCheckpoint, EarlyStopping
 from utils.logger import Logger
 import random
 from tqdm import tqdm
+from evaluation.metrics import (
+    compute_bleu_scores,
+    compute_bert_score,
+    compute_classification_accuracy,
+    compute_bev_miou,
+    compute_top1_accuracy,
+)
 
 class Trainer:
     def __init__(
@@ -145,6 +152,25 @@ class Trainer:
             "val_perplexity": perplexity,
         }
         return metrics
+    
+    def evaluate_captioning(self, eval_loader: DataLoader) -> Dict[str, float]:
+        self.model.eval()
+        all_references = []
+        all_predictions = []
+        with torch.no_grad():
+            for batch in tqdm(eval_loader, desc="Evaluating Captioning"):
+                for i, sample in enumerate(batch["points"]):
+                    sample = sample.to(self.device).unsqueeze(0)
+                    prompt_i = batch["prompt"][i]
+                    generated = self.model.generate(sample, [prompt_i])
+                    all_predictions.append(generated[0])
+                all_references.extend(batch["answer"])
+        bleu_scores = compute_bleu_scores(all_references, all_predictions)
+        bert = compute_bert_score(all_references, all_predictions)
+        metrics = {**bleu_scores, "bert_score": bert}
+        return metrics
+
+
 
     def fit(
         self,
